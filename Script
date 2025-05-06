@@ -1,0 +1,120 @@
+import streamlit as st
+import pandas as pd
+import altair as alt
+import plotly.express as px
+
+#Page config
+st.set_page_config(
+    page_title="SG HDB Resale Dashboard",
+    layout="wide"
+)
+
+# === Load data ===
+@st.cache_data
+def load_data():
+    df = pd.read_csv("C:/Users/USER/Desktop/Resale flat prices based on registration date from Jan-2017 onwards.csv")
+    df['month'] = pd.to_datetime(df['month'])
+    df['remaining_lease_years'] = df['remaining_lease'].str.extract(r'(\d+)\s+year').astype(float)
+    
+    # Approximate town coordinates for mapping
+    town_coords = {
+        "ANG MO KIO": (1.3691, 103.8454),
+        "BEDOK": (1.3236, 103.9305),
+        "BISHAN": (1.3508, 103.8485),
+        "BUKIT BATOK": (1.3496, 103.7492),
+        "BUKIT MERAH": (1.284, 103.8201),
+        "BUKIT PANJANG": (1.3787, 103.7640),
+        "BUKIT TIMAH": (1.3294, 103.8021),
+        "CENTRAL AREA": (1.290270, 103.851959),
+        "CHOA CHU KANG": (1.3854, 103.7445),
+        "CLEMENTI": (1.3151, 103.7656),
+        "GEYLANG": (1.3167, 103.8866),
+        "HOUGANG": (1.3716, 103.8867),
+        "JURONG EAST": (1.3321, 103.7396),
+        "JURONG WEST": (1.3393, 103.7070),
+        "KALLANG/WHAMPOA": (1.3192, 103.8570),
+        "MARINE PARADE": (1.3039, 103.9053),
+        "PASIR RIS": (1.3736, 103.9496),
+        "PUNGGOL": (1.4051, 103.9023),
+        "QUEENSTOWN": (1.2943, 103.8037),
+        "SEMBAWANG": (1.4491, 103.8185),
+        "SENGKANG": (1.3915, 103.8950),
+        "SERANGOON": (1.3523, 103.8701),
+        "TAMPINES": (1.3496, 103.9568),
+        "TOA PAYOH": (1.3331, 103.8490),
+        "WOODLANDS": (1.4360, 103.7865),
+        "YISHUN": (1.4294, 103.8353),
+    }
+
+    df["lat"] = df["town"].map(lambda x: town_coords.get(x, (None, None))[0])
+    df["lon"] = df["town"].map(lambda x: town_coords.get(x, (None, None))[1])
+
+    return df
+
+df = load_data()
+
+# === Sidebar (Left) ===
+st.sidebar.title("Filters")
+selected_town = st.sidebar.selectbox("Select Town", sorted(df['town'].unique()))
+selected_flat_type = st.sidebar.multiselect("Select Flat Type", sorted(df['flat_type'].unique()), default=["3 ROOM", "4 ROOM"])
+
+min_lease = int(df['remaining_lease_years'].min())
+max_lease = int(df['remaining_lease_years'].max())
+selected_lease = st.sidebar.slider("Filter by Remaining Lease (Years)", min_lease, max_lease, (min_lease, max_lease))
+
+# === Data Filtering ===
+filtered_df = df[
+    (df['town'] == selected_town) &
+    (df['flat_type'].isin(selected_flat_type)) &
+    (df['remaining_lease_years'] >= selected_lease[0]) &
+    (df['remaining_lease_years'] <= selected_lease[1])
+]
+
+# === Main Dashboard ===
+st.title("Singapore HDB Resale Dashboard")
+st.markdown(f"Showing data for **{selected_town}**, flat types: {', '.join(selected_flat_type)}")
+
+# --- Altair Chart ---
+st.subheader("📈 Resale Price Trend Over Time")
+line_chart = alt.Chart(filtered_df).mark_line().encode(
+    x='month:T',
+    y='mean(resale_price):Q',
+    color='flat_type:N'
+).properties(width=700, height=400)
+st.altair_chart(line_chart, use_container_width=True)
+
+# --- Plotly Box Chart ---
+st.subheader("📊 Resale Price Distribution")
+box_fig = px.box(filtered_df, x="flat_type", y="resale_price", color="flat_type")
+st.plotly_chart(box_fig, use_container_width=True)
+
+# --- Map View ---
+st.subheader("🗺️ Average Resale Price by Town (Map)")
+map_df = df[df['flat_type'].isin(selected_flat_type)]
+map_df = map_df.groupby('town').agg({
+    'resale_price': 'mean',
+    'lat': 'first',
+    'lon': 'first'
+}).dropna().reset_index()
+
+map_fig = px.scatter_mapbox(
+    map_df,
+    lat="lat",
+    lon="lon",
+    size="resale_price",
+    color="resale_price",
+    hover_name="town",
+    size_max=15,
+    zoom=10,
+    mapbox_style="carto-positron",
+)
+st.plotly_chart(map_fig, use_container_width=True)
+
+# === Right Sidebar for Ranked Towns ===
+st.sidebar.title("📌 Top Towns by Avg Price")
+ranked = df.groupby("town")["resale_price"].mean().sort_values().reset_index()
+st.sidebar.dataframe(ranked.rename(columns={"resale_price": "Avg Resale Price (SGD)"}), use_container_width=True)
+
+# --- Optional Raw Data ---
+if st.checkbox("Show Raw Filtered Data"):
+    st.write(filtered_df)
