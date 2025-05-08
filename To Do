@@ -1,0 +1,9 @@
+# Display
+
+Edit the maps to look nicer
+
+# Mapping of data
+
+Find a better way to extract out the mapped coordinates to reflect the town boundaries and their respective avg.Resale Price
+  -Going to extract out the polygons from URA master plan to the town_coordinates
+  -Once done, use that new file to map to the streamlit code and use that dat to reflect on the map 
