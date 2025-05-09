@@ -1,10 +1,16 @@
-# SG HDB Resale Dashboard
+# SG HDB Resale Dashboard:
 
 This is a code using streamlit to create a dashboad showing the property prices in Singapore.
 
 More specifically, the HDB Resale prices across the years and location across Singapore.
 
-Data take from: 
+# Business Case:
+
+Purpose of creating this dashboard is to allow people to track the HDB Resale price changes in Singapore, while giving the the ability to compare across towns, room types and also lease duration.
+
+Hopefully with the information, peoplpe will be more aware of what is going on in the HDB resale market in Singapore. So that they have more information to use to make an informed decision for their purchase. 
+
+# Data from:
 
 HDB Resale data - https://data.gov.sg/collections/189/view
 
