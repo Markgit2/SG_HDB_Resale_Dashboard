@@ -1,9 +1,13 @@
 # Display
 
-Edit the maps to look nicer
+Edit the maps to look nicer - Done 9 May 2025
 
 # Mapping of data
 
-Find a better way to extract out the mapped coordinates to reflect the town boundaries and their respective avg.Resale Price
+Find a better way to extract out the mapped coordinates to reflect the town boundaries and their respective avg.Resale Price - Done 9 May 2025
   -Going to extract out the polygons from URA master plan to the town_coordinates
   -Once done, use that new file to map to the streamlit code and use that dat to reflect on the map 
+
+# To Do 
+
+Find out how to better present the data if needed, for future review
