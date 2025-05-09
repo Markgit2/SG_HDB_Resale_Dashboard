@@ -1,10 +1,13 @@
+#Run:     streamlit run c:/Users/USER/Desktop/Code/stdashboard_test.py
+
+
 import streamlit as st
 import pandas as pd
+import numpy as np
+import json
+import re
 import altair as alt
 import plotly.express as px
-import numpy as np
-
-#Run: streamlit run c:/Users/USER/Desktop/Code/stdashboard_test.py
 
 #Page config
 st.set_page_config(
@@ -12,68 +15,49 @@ st.set_page_config(
     layout="wide"
 )
 
-# === Load data ===
+#Load data
 @st.cache_data
 def load_data():
     df = pd.read_csv("C:/Users/USER/Desktop/Resale flat prices based on registration date from Jan-2017 onwards.csv")
     df['month'] = pd.to_datetime(df['month'])
     df['remaining_lease_years'] = df['remaining_lease'].str.extract(r'(\d+)\s+year').astype(float)
-    
-    # Round up to the nearest dollar
-    df["resale_price"] = pd.to_numeric(df["resale_price"], errors='coerce')
-    df["resale_price"] = df["resale_price"].fillna(0) 
-    df["resale_price"] = np.ceil(df["resale_price"])
-    
-    df["formatted_resale_price"] = df["resale_price"].apply(lambda x: f"${int(x):,}")
-    
-    # Approximate town coordinates for mapping
-    town_coords = {
-        "ANG MO KIO": (1.3691, 103.8454),
-        "BEDOK": (1.3236, 103.9305),
-        "BISHAN": (1.3508, 103.8485),
-        "BUKIT BATOK": (1.3496, 103.7492),
-        "BUKIT MERAH": (1.284, 103.8201),
-        "BUKIT PANJANG": (1.3787, 103.7640),
-        "BUKIT TIMAH": (1.3294, 103.8021),
-        "CENTRAL AREA": (1.290270, 103.851959),
-        "CHOA CHU KANG": (1.3854, 103.7445),
-        "CLEMENTI": (1.3151, 103.7656),
-        "GEYLANG": (1.3167, 103.8866),
-        "HOUGANG": (1.3716, 103.8867),
-        "JURONG EAST": (1.3321, 103.7396),
-        "JURONG WEST": (1.3393, 103.7070),
-        "KALLANG/WHAMPOA": (1.3192, 103.8570),
-        "MARINE PARADE": (1.3039, 103.9053),
-        "PASIR RIS": (1.3736, 103.9496),
-        "PUNGGOL": (1.4051, 103.9023),
-        "QUEENSTOWN": (1.2943, 103.8037),
-        "SEMBAWANG": (1.4491, 103.8185),
-        "SENGKANG": (1.3915, 103.8950),
-        "SERANGOON": (1.3523, 103.8701),
-        "TAMPINES": (1.3496, 103.9568),
-        "TOA PAYOH": (1.3331, 103.8490),
-        "WOODLANDS": (1.4360, 103.7865),
-        "YISHUN": (1.4294, 103.8353),
-    }
 
-    df["lat"] = df["town"].map(lambda x: town_coords.get(x, (None, None))[0])
-    df["lon"] = df["town"].map(lambda x: town_coords.get(x, (None, None))[1])
+    df["resale_price"] = pd.to_numeric(df["resale_price"], errors='coerce').fillna(0)
+    df["resale_price"] = np.ceil(df["resale_price"])
+    df["formatted_resale_price"] = df["resale_price"].apply(lambda x: f"${int(x):,}")
 
     return df
 
-df = load_data()
+@st.cache_data
+def load_geojson():
+    with open("C:/Users/USER/Desktop\MasterPlan2019PlanningAreaBoundaryNoSea1.geojson", "r") as f:
+        geojson = json.load(f)
 
-# === Sidebar (Left) ===
+    town_features = {}
+    for feature in geojson['features']:
+        desc = feature['properties']['Description']
+        match = re.search(r'<th>PLN_AREA_N<\/th>\s*<td>(.*?)<\/td>', desc)
+        if match:
+            town = match.group(1).upper()
+            feature["properties"]["town"] = town
+            town_features[town] = feature
+
+    return town_features
+
+#Sidebar
+df = load_data()
+geojson_features = load_geojson()
+
 with st.sidebar:
     st.title("Filters")
-    selected_town = st.sidebar.selectbox("Select Town", sorted(df['town'].unique()))
-    selected_flat_type = st.sidebar.multiselect("Select Flat Type", sorted(df['flat_type'].unique()), default=["3 ROOM", "4 ROOM"])
+    selected_town = st.selectbox("Select Town", sorted(df['town'].unique()))
+    selected_flat_type = st.multiselect("Select Flat Type", sorted(df['flat_type'].unique()), default=["3 ROOM", "4 ROOM"])
 
     min_lease = int(df['remaining_lease_years'].min())
     max_lease = int(df['remaining_lease_years'].max())
-    selected_lease = st.sidebar.slider("Filter by Remaining Lease (Years)", min_lease, max_lease, (min_lease, max_lease))
+    selected_lease = st.slider("Filter by Remaining Lease (Years)", min_lease, max_lease, (min_lease, max_lease))
 
-# === Data Filtering ===
+#Filtered Data
 filtered_df = df[
     (df['town'] == selected_town) &
     (df['flat_type'].isin(selected_flat_type)) &
@@ -81,112 +65,105 @@ filtered_df = df[
     (df['remaining_lease_years'] <= selected_lease[1])
 ]
 
-# === Main Dashboard ===
+#Layout Columns
 st.title("Singapore HDB Resale Dashboard")
 st.markdown(f"Showing data for **{selected_town}**, flat types: {', '.join(selected_flat_type)}")
 
 col = st.columns((3, 1), gap='medium')
 
 with col[0]:
-    # --- Altair Trendline Section ---
+    #Resale Diagram
     st.subheader("📈 Resale Price Trends")
-
     trend_mode = st.radio("Select Trendline Mode", ["Flat Types in Selected Town", "Compare Multiple Towns"])
 
     if trend_mode == "Flat Types in Selected Town":
-        st.markdown(f"Showing resale price trends for **{selected_town}** across flat types.")
-        flat_chart_data = df[
-            (df['town'] == selected_town) &
-            (df['flat_type'].isin(selected_flat_type)) &
-            (df['remaining_lease_years'] >= selected_lease[0]) &
-            (df['remaining_lease_years'] <= selected_lease[1])
-        ].copy()
+        trend_df = filtered_df.copy()
+        trend_df['year'] = trend_df['month'].dt.year
+        chart_data = trend_df.groupby(['year', 'flat_type'])['resale_price'].mean().reset_index()
 
-        flat_chart_data['year'] = flat_chart_data['month'].dt.year
-        flat_chart_data = flat_chart_data.groupby(['year', 'flat_type'])['resale_price'].mean().reset_index()
-
-        flat_chart = alt.Chart(flat_chart_data).mark_line().encode(
-            x=alt.X('year:O', title='Year', axis=alt.Axis(labelAngle=0)),
+        chart = alt.Chart(chart_data).mark_line().encode(
+            x=alt.X('year:O', title='Year'),
             y='resale_price:Q',
             color='flat_type:N',
             tooltip=['year:O', 'flat_type', 'resale_price']
         ).properties(width=750, height=400)
 
-        st.altair_chart(flat_chart, use_container_width=True)
+        st.altair_chart(chart, use_container_width=True)
 
     elif trend_mode == "Compare Multiple Towns":
         selected_towns = st.multiselect("Compare Towns", sorted(df["town"].unique()), default=[selected_town])
         use_smoothing = st.checkbox("Apply 3-Month Moving Average", value=True)
 
-        town_trend_data = df[
+        town_df = df[
             (df["town"].isin(selected_towns)) &
             (df["flat_type"].isin(selected_flat_type)) &
             (df["remaining_lease_years"] >= selected_lease[0]) &
             (df["remaining_lease_years"] <= selected_lease[1])
         ]
-        town_trend_grouped = town_trend_data.groupby(["month", "town"]).agg({"resale_price": "mean"}).reset_index()
+        grouped = town_df.groupby(["month", "town"])['resale_price'].mean().reset_index()
 
         if use_smoothing:
-            town_trend_grouped["resale_price"] = town_trend_grouped.groupby("town")["resale_price"].transform(
+            grouped['resale_price'] = grouped.groupby("town")['resale_price'].transform(
                 lambda x: x.rolling(window=3, min_periods=1).mean()
             )
 
-        town_chart = alt.Chart(town_trend_grouped).mark_line().encode(
-            x=alt.X('month:T', axis=alt.Axis(format='%Y', title='Year')),
+        trend_chart = alt.Chart(grouped).mark_line().encode(
+            x=alt.X('month:T', axis=alt.Axis(format='%Y')),
             y='resale_price:Q',
             color='town:N',
-            tooltip=[alt.Tooltip("month:T", format="%Y", title="Year"), "town", "resale_price"]
+            tooltip=[alt.Tooltip("month:T", format="%Y"), "town", "resale_price"]
         ).properties(width=750, height=400)
 
-        st.altair_chart(town_chart, use_container_width=True)
+        st.altair_chart(trend_chart, use_container_width=True)
 
-    # --- Plotly Box Chart ---
+    #Comparison of prices for room types
     st.subheader("📊 Resale Price Distribution")
     box_fig = px.box(filtered_df, x="flat_type", y="resale_price", color="flat_type")
     st.plotly_chart(box_fig, use_container_width=True)
 
-    # --- Map View ---
-    st.subheader("🗺️ Average Resale Price by Town (Map)")
+    #Map
+    st.subheader("🗺️ Choropleth Map - Avg Resale Price by Town")
+
+    #Configuring map data
     map_df = df[df['flat_type'].isin(selected_flat_type)]
-    map_df = map_df.groupby('town').agg({
-        'resale_price': 'mean',
-        'lat': 'first',
-        'lon': 'first'
-    }).dropna().reset_index()
+    avg_prices = map_df.groupby('town')['resale_price'].mean().reset_index()
+    avg_prices.columns = ['town', 'mean_resale_price']
 
-    map_fig = px.scatter_mapbox(
-        map_df,
-        lat="lat",
-        lon="lon",
-        size="resale_price",
-        color="resale_price",
-        hover_name="town",
-        size_max=15,
-        zoom=10,
+    matched_features = [feature for town, feature in geojson_features.items() if town in avg_prices['town'].values]
+    choropleth_geojson = {
+        "type": "FeatureCollection",
+        "features": matched_features
+    }
+
+    choropleth_fig = px.choropleth_mapbox(
+        avg_prices,
+        geojson=choropleth_geojson,
+        locations='town',
+        featureidkey="properties.town",
+        color='mean_resale_price',
+        color_continuous_scale="YlOrRd",
         mapbox_style="carto-positron",
+        zoom=10,
+        center={"lat": 1.3521, "lon": 103.8198},
+        opacity=0.6,
+        labels={'mean_resale_price': 'Mean Resale Price'}
     )
-    st.plotly_chart(map_fig, use_container_width=True)
 
+    st.plotly_chart(choropleth_fig, use_container_width=True)
 
 with col[1]:
+    #Top towns at the right side
     st.subheader("📌 Top Towns by Avg Price")
-    
-    # Calculate average resale price
     ranked = df.groupby("town")["resale_price"].mean().round().reset_index()
-    
-    # Sort by resale price descending
     ranked = ranked.sort_values(by="resale_price", ascending=False)
-    
-    # Format the price for display
     ranked["Avg Resale Price (SGD)"] = ranked["resale_price"].apply(lambda x: f"${int(x):,}")
-    
-    # Show DataFrame with hidden index, keeping both numeric and formatted columns
+
     st.dataframe(
         ranked[["town", "Avg Resale Price (SGD)"]],
         use_container_width=True,
         hide_index=True
     )
 
-# --- Optional Raw Data ---
+#Option to show data
 if st.checkbox("Show Raw Filtered Data"):
     st.write(filtered_df)
