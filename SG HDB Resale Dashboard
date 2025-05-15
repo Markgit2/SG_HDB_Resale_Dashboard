@@ -8,6 +8,7 @@ import json
 import re
 import altair as alt
 import plotly.express as px
+import requests
 
 #Page config
 st.set_page_config(
@@ -15,10 +16,15 @@ st.set_page_config(
     layout="wide"
 )
 
+# Raw GitHub URLs (replace with your own)
+CSV_URL = "https://raw.githubusercontent.com/Markgit2/SG_Property_Dashboards/refs/heads/main/Resale%20flat%20prices%20based%20on%20registration%20date%20from%20Jan-2017%20onwards.csv"
+GEOJSON_URL = "https://raw.githubusercontent.com/Markgit2/SG_Property_Dashboards/refs/heads/main/MasterPlan2019PlanningAreaBoundaryNoSea1.geojson"
+
+
 #Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("C:/Users/USER/Desktop/Resale flat prices based on registration date from Jan-2017 onwards.csv")
+    df = pd.read_csv(CSV_URL)
     df['month'] = pd.to_datetime(df['month'])
     df['remaining_lease_years'] = df['remaining_lease'].str.extract(r'(\d+)\s+year').astype(float)
 
@@ -30,8 +36,10 @@ def load_data():
 
 @st.cache_data
 def load_geojson():
-    with open("C:/Users/USER/Desktop\MasterPlan2019PlanningAreaBoundaryNoSea1.geojson", "r") as f:
-        geojson = json.load(f)
+    resp = requests.get(GEOJSON_URL)
+    resp.raise_for_status()
+    geojson = resp.json()
+
 
     town_features = {}
     for feature in geojson['features']:
